@@ -1,29 +1,121 @@
+/* ============================================================
+   FIL: data/plan.json  (HEL FIL)
+   AO-KITCHEN-3D-01 (FAS 1) — Startdata för plan-overlay + kalibrering
+   - Kalibrera skala via Kåpa B långsida = 6.0 m (6000 mm)
+   - Kontroll via Kåpa B kortsida = 3.0 m (3000 mm)
+   - Höjdzoner:
+       * Storkök + Disk: 3.20 m
+       * Pack + Varumottagning: 5.00 m
+============================================================ */
 {
-  "_comment": "Plan-metadata: skala, rotation, offset och höjdzoner. Kalibrering uppdaterar metersPerPixel.",
-
-  "planImage": "assets/plans/plan.png",
-
-  "calibration": {
-    "metersPerPixel": null,
-    "referenceObject": "Kåpa B långsida",
-    "referenceLengthM": 6.0,
-    "point1": null,
-    "point2": null
+  "schemaVersion": "1.0.0",
+  "project": {
+    "name": "Storkök – Huddinge",
+    "units": "m",
+    "coordinateSystem": "x_right_z_down_y_up",
+    "notes": [
+      "Plan-overlay kalibreras i appen via Kåpa B långsida = 6.0 m.",
+      "Kåpa B kortsida = 3.0 m används som kontrollmätning.",
+      "Höjdzoner: storkök+disk 3.20 m, pack+varumottagning 5.00 m."
+    ]
   },
 
-  "offset": { "x": 0, "z": 0 },
-  "rotationDeg": 0,
+  "planOverlay": {
+    "image": "assets/plans/plan.png",
+    "opacity": 0.7,
+
+    "origin": { "x": 0, "y": 0, "z": 0 },
+    "rotationYDeg": 0,
+
+    "metersPerPixel": null,
+
+    "calibration": {
+      "status": "uncalibrated",
+      "method": "twoPoint",
+      "reference": {
+        "id": "HOOD_B",
+        "label": "Kåpa B (6000x3000)",
+        "knownDistanceM": 6.0,
+        "knownSecondaryDistanceM": 3.0
+      },
+      "points": {
+        "p1_px": null,
+        "p2_px": null,
+        "secondary_p1_px": null,
+        "secondary_p2_px": null
+      },
+      "result": {
+        "pixelDistance": null,
+        "pixelDistanceSecondary": null,
+        "secondaryErrorPct": null,
+        "computedMetersPerPixel": null,
+        "computedRotationYDeg": null
+      }
+    }
+  },
 
   "heightZones": [
     {
-      "id": "storkok-disk",
-      "name": "Storkök / Disk",
-      "ceilingHeightM": 3.20
+      "id": "HZ_KITCHEN_DISH",
+      "name": "Storkök + Diskrum",
+      "heightM": 3.2,
+      "areas": []
     },
     {
-      "id": "pack-varumottagning",
-      "name": "Pack / Varumottagning",
-      "ceilingHeightM": 5.00
+      "id": "HZ_PACK_RECEIVING",
+      "name": "Packrum + Varumottagning",
+      "heightM": 5.0,
+      "areas": []
     }
-  ]
+  ],
+
+  "hoodZones": [
+    {
+      "id": "HOOD_GROVDISK",
+      "name": "Kåpa – Grovdisk",
+      "shape": "rect",
+      "rect": { "x": 0, "z": 0, "w": 0, "d": 0 },
+      "heightZoneId": "HZ_KITCHEN_DISH"
+    },
+    {
+      "id": "HOOD_HUVDISK",
+      "name": "Kåpa – Huvuddiskmaskin",
+      "shape": "rect",
+      "rect": { "x": 0, "z": 0, "w": 0, "d": 0 },
+      "heightZoneId": "HZ_KITCHEN_DISH"
+    },
+    {
+      "id": "HOOD_KOKERI_2400",
+      "name": "Kåpa – Kokeri (2400)",
+      "shape": "rect",
+      "rect": { "x": 0, "z": 0, "w": 2.4, "d": 0 },
+      "heightZoneId": "HZ_KITCHEN_DISH"
+    },
+    {
+      "id": "HOOD_B",
+      "name": "Kåpa B – Varmzon",
+      "shape": "rect",
+      "rect": { "x": 0, "z": 0, "w": 6.0, "d": 3.0 },
+      "heightZoneId": "HZ_KITCHEN_DISH"
+    }
+  ],
+
+  "walls": {
+    "defaultThicknessM": 0.1,
+    "segments": []
+  },
+
+  "doors": [],
+
+  "grid": {
+    "enabled": true,
+    "snapM": 0.1
+  },
+
+  "recommended": {
+    "serviceAmpsA": 630,
+    "notes": [
+      "Preliminärt värde, justeras när full last (inkl kyla/vent) räknas."
+    ]
+  }
 }
