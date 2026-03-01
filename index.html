@@ -1,108 +1,1006 @@
-<!DOCTYPE html>
+<!-- ============================================================
+     FIL: index.html  (HEL FIL)
+     AO-KITCHEN-3D-01 (FAS 1) — Plan-overlay + FPS-walk + Kalibrera (Kåpa B 6m)
+                               + Rita väggar/zons (kåpor + höjdzoner)
+                               + Export/Import data/plan.json
+     Policy: GitHub Pages (UI-only), XSS-safe, fail-closed (rita/export kräver kalibrering)
+     Förväntad repo:
+       /assets/plans/plan.png
+       /data/plan.json
+============================================================ -->
+<!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kitchen Planner 3D</title>
-
-  <!-- ============================================================
-       BLOCK: Stilmall
-       Laddar huvudstilen för hela appen.
-       ============================================================ -->
-  <link rel="stylesheet" href="styles/main.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Köksplanerare 3D — AO-KITCHEN-3D-01</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#111a33;--panel2:#0f1730;--txt:#e8ecff;--muted:#aab3d6;--line:#24305a;--ok:#2ad66d;--warn:#ffb020;--bad:#ff4d4d;}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;}
+    #wrap{display:grid;grid-template-columns: 360px 1fr; height:100vh;}
+    #ui{padding:12px;border-right:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--panel2));overflow:auto}
+    #view{position:relative}
+    canvas{display:block;width:100%;height:100%;}
+    h1{font-size:16px;margin:0 0 10px 0}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .card{border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);padding:10px;margin:10px 0}
+    .btn{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--txt);border-radius:10px;padding:8px 10px;cursor:pointer;font-weight:600}
+    .btn:hover{background:rgba(255,255,255,.10)}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .btn.ok{border-color:rgba(42,214,109,.45)}
+    .btn.warn{border-color:rgba(255,176,32,.55)}
+    .btn.bad{border-color:rgba(255,77,77,.55)}
+    .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:12px;color:var(--muted);background:rgba(255,255,255,.03)}
+    label{font-size:12px;color:var(--muted);display:block;margin:8px 0 4px}
+    input[type="range"]{width:100%}
+    select,textarea,input[type="text"]{width:100%;box-sizing:border-box;border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--txt);border-radius:10px;padding:8px}
+    textarea{min-height:130px;resize:vertical}
+    .status{font-size:12px;color:var(--muted);line-height:1.35}
+    .status b{color:var(--txt)}
+    .kv{display:grid;grid-template-columns: 130px 1fr;gap:6px;font-size:12px}
+    .kv div{padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.08)}
+    .hud{position:absolute;left:12px;top:12px;z-index:5}
+    .hud .pill{backdrop-filter: blur(6px);}
+    .hint{font-size:12px;color:var(--muted)}
+    .small{font-size:12px;color:var(--muted)}
+    .sep{height:1px;background:var(--line);margin:10px 0}
+    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  </style>
 </head>
+
 <body>
+<div id="wrap">
+  <aside id="ui">
+    <h1>🍳 Köksplanerare 3D — AO-KITCHEN-3D-01</h1>
 
-  <!-- ============================================================
-       BLOCK: 3D-canvas-container
-       Här renderas Three.js-scenen. Alla 3D-element ritas i denna div.
-       ============================================================ -->
-  <div id="scene-container"></div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <span class="pill" id="pillScale">Skala: <b id="scaleTxt">—</b></span>
+        <span class="pill" id="pillMode">Läge: <b id="modeTxt">—</b></span>
+      </div>
+      <div class="sep"></div>
 
-  <!-- ============================================================
-       BLOCK: Debug-overlay
-       Visar kameraposition (x, z) i meter och aktuell skala (m/px).
-       Uppdateras varje frame av bootstrap.js.
-       ============================================================ -->
-  <div id="debug-overlay">
-    <span id="debug-pos">Pos: 0.00, 0.00</span> |
-    <span id="debug-scale">Skala: ej kalibrerad</span>
-  </div>
-
-  <!-- ============================================================
-       BLOCK: UI-panel (höger)
-       Innehåller kontroller:
-         - Opacity-slider för planritning
-         - Kalibreringsknapp + status
-         - Höjdzoner (info från plan.json)
-       ============================================================ -->
-  <div id="ui-panel">
-    <h2>Köksplanerare 3D</h2>
-
-    <!-- SUB-BLOCK: Plan-opacity -->
-    <div class="ui-group">
-      <label for="opacity-slider">Plan-opacity:</label>
-      <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="0.7" />
-      <span id="opacity-value">0.70</span>
+      <div class="row">
+        <button class="btn ok" id="btnLockMouse">Lås mus</button>
+        <button class="btn" id="btnUnlockMouse">Släpp mus</button>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        FPS: Klick i 3D → muslås. WASD = gå. Shift = snabb. ESC = släpp.
+      </div>
     </div>
 
-    <!-- SUB-BLOCK: Kalibrera skala -->
-    <div class="ui-group">
-      <button id="btn-calibrate">📐 Kalibrera skala (Kåpa B = 6 m)</button>
-      <p id="calibration-status">Status: ej kalibrerad</p>
-      <p id="calibration-info" class="info-text">
-        Klicka på knappen, sedan 2 punkter på planbilden (långsidan kåpa B).
-      </p>
+    <div class="card">
+      <div class="row">
+        <button class="btn ok" id="btnCal6">Kalibrera (6,0 m)</button>
+        <button class="btn warn" id="btnCal3">Kontroll (3,0 m)</button>
+        <button class="btn" id="btnClearCal">Nollställ skala</button>
+      </div>
+      <label>Planens opacity</label>
+      <input type="range" id="rngOpacity" min="0.15" max="1" step="0.01" value="0.7" />
+      <div class="status" id="calStatus" style="margin-top:8px"></div>
+      <div class="hint">Kalibrering: klicka 2 punkter på kåpa B långsida (6 m). Kontroll: 2 punkter på kortsida (3 m).</div>
     </div>
 
-    <!-- SUB-BLOCK: Höjdzoner -->
-    <div class="ui-group">
-      <h3>Höjdzoner</h3>
-      <ul id="zone-list">
-        <!-- Fylls dynamiskt av bootstrap.js -->
-      </ul>
+    <div class="card">
+      <label>Läge</label>
+      <select id="selMode">
+        <option value="none">Inget (bara gå runt)</option>
+        <option value="drawWall">Rita väggsegment (2 klick)</option>
+        <option value="drawHeightRect">Rita höjdzon-rect (2 klick)</option>
+        <option value="drawHoodRect">Rita kåp-rect (2 klick)</option>
+      </select>
+
+      <div id="modePanel" style="margin-top:8px"></div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <button class="btn" id="btnUndo">Undo</button>
+        <button class="btn bad" id="btnClearAll">Rensa allt</button>
+      </div>
+      <div class="small" style="margin-top:8px">
+        Fail-closed: Rita/export är låst tills skalan är kalibrerad.
+      </div>
     </div>
 
-    <!-- SUB-BLOCK: Instruktioner -->
-    <div class="ui-group">
-      <h3>Kontroller</h3>
-      <ul class="help-list">
-        <li><kbd>Klick</kbd> i scenen → lås mus (FPS)</li>
-        <li><kbd>W A S D</kbd> — gå</li>
-        <li><kbd>Shift</kbd> — snabb</li>
-        <li><kbd>Esc</kbd> — släpp mus</li>
-      </ul>
+    <div class="card">
+      <div class="row">
+        <button class="btn ok" id="btnExport" disabled>Export plan.json</button>
+        <button class="btn" id="btnImport">Import (klistra in)</button>
+      </div>
+      <label>JSON (export/import)</label>
+      <textarea id="txtJson" class="mono" placeholder="Här kommer export... eller klistra in plan.json och tryck Import."></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="btnCopy">Kopiera JSON</button>
+        <a class="btn" id="btnDownload" download="plan.json" href="#" style="text-decoration:none;display:inline-block">Ladda ner plan.json</a>
+      </div>
+      <div class="hint" style="margin-top:8px">Tips: Spara exporten i <span class="mono">/data/plan.json</span> i GitHub.</div>
     </div>
-  </div>
 
-  <!-- ============================================================
-       BLOCK: Kalibrerings-overlay
-       Visar instruktioner under pågående kalibrering.
-       Döljs normalt, visas när kalibrering är aktiv.
-       ============================================================ -->
-  <div id="calibration-overlay" class="hidden">
-    <p id="calibration-prompt">Klicka punkt 1 på planbilden...</p>
-  </div>
+    <div class="card">
+      <div class="kv">
+        <div>Kamera (x,z)</div><div class="mono" id="dbgPos">—</div>
+        <div>Skala</div><div class="mono" id="dbgScale">—</div>
+        <div>Väggar</div><div class="mono" id="dbgWalls">0</div>
+        <div>Kåpor</div><div class="mono" id="dbgHoods">0</div>
+        <div>Höjdzoner</div><div class="mono" id="dbgHeights">0</div>
+      </div>
+    </div>
+  </aside>
 
-  <!-- ============================================================
-       BLOCK: Three.js CDN
-       Laddar Three.js + PointerLockControls via CDN (ESM-import-map).
-       Inga build-steg behövs — allt körs direkt i webbläsaren.
-       ============================================================ -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  <main id="view">
+    <div class="hud">
+      <span class="pill">Klick-status: <b id="clickTxt">—</b></span>
+    </div>
+    <canvas id="c"></canvas>
+  </main>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+
+/* ============================================================
+   BLOCK 1 — Helpers
+============================================================ */
+const $ = (sel) => document.querySelector(sel);
+const clamp = (v,min,max) => Math.max(min, Math.min(max, v));
+const fmt = (n, d=3) => (Number.isFinite(n) ? n.toFixed(d) : "—");
+const safeText = (el, s) => { el.textContent = String(s ?? ""); };
+
+function downloadHrefFromText(text) {
+  const blob = new Blob([text], { type: "application/json" });
+  return URL.createObjectURL(blob);
+}
+
+/* ============================================================
+   BLOCK 2 — UI hooks
+============================================================ */
+const elCanvas = $("#c");
+const elScaleTxt = $("#scaleTxt");
+const elModeTxt = $("#modeTxt");
+const elCalStatus = $("#calStatus");
+const elOpacity = $("#rngOpacity");
+const elSelMode = $("#selMode");
+const elModePanel = $("#modePanel");
+const elBtnCal6 = $("#btnCal6");
+const elBtnCal3 = $("#btnCal3");
+const elBtnClearCal = $("#btnClearCal");
+const elBtnExport = $("#btnExport");
+const elBtnImport = $("#btnImport");
+const elTxtJson = $("#txtJson");
+const elBtnCopy = $("#btnCopy");
+const elBtnDownload = $("#btnDownload");
+const elBtnLockMouse = $("#btnLockMouse");
+const elBtnUnlockMouse = $("#btnUnlockMouse");
+const elBtnUndo = $("#btnUndo");
+const elBtnClearAll = $("#btnClearAll");
+const elClickTxt = $("#clickTxt");
+
+const elDbgPos = $("#dbgPos");
+const elDbgScale = $("#dbgScale");
+const elDbgWalls = $("#dbgWalls");
+const elDbgHoods = $("#dbgHoods");
+const elDbgHeights = $("#dbgHeights");
+
+/* ============================================================
+   BLOCK 3 — State + plan.json load/save
+============================================================ */
+const PLAN_URL = "data/plan.json";
+const PLAN_LS_KEY = "KITCHEN_PLAN_JSON_V1";
+
+let plan = null;            // loaded plan.json object
+let planTexture = null;     // THREE.Texture
+let planImageSize = { w: 1, h: 1 };
+
+let computed = {
+  metersPerPixel: null,
+  overlayWm: 10,
+  overlayHm: 10
+};
+
+let editor = {
+  mode: "none",
+  pending: null, // { kind, p1World, p1UV, p1px }
+  undoStack: []
+};
+
+function isCalibrated() {
+  return Number.isFinite(plan?.planOverlay?.metersPerPixel) && plan.planOverlay.metersPerPixel > 0;
+}
+
+function syncComputedFromPlan() {
+  computed.metersPerPixel = plan?.planOverlay?.metersPerPixel ?? null;
+  const mpp = computed.metersPerPixel || 0.01; // fallback for preview only
+  computed.overlayWm = planImageSize.w * mpp;
+  computed.overlayHm = planImageSize.h * mpp;
+
+  safeText(elScaleTxt, isCalibrated() ? `${fmt(computed.metersPerPixel, 6)} m/px` : "Ej kalibrerad");
+  safeText(elDbgScale, isCalibrated() ? `${fmt(computed.metersPerPixel, 6)} m/px` : "—");
+  elBtnExport.disabled = !isCalibrated();
+}
+
+function setCalStatus(htmlLines) {
+  // XSS-safe: build via textContent lines
+  elCalStatus.innerHTML = "";
+  for (const line of htmlLines) {
+    const p = document.createElement("div");
+    p.className = "status";
+    p.textContent = line;
+    elCalStatus.appendChild(p);
+  }
+}
+
+async function loadPlan() {
+  // Prefer localStorage (latest), else fetch file.
+  const ls = localStorage.getItem(PLAN_LS_KEY);
+  if (ls) {
+    try {
+      return JSON.parse(ls);
+    } catch (_) { /* ignore */ }
+  }
+  const res = await fetch(PLAN_URL, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Kunde inte läsa ${PLAN_URL}`);
+  return await res.json();
+}
+
+function persistPlan() {
+  try { localStorage.setItem(PLAN_LS_KEY, JSON.stringify(plan)); } catch (_) {}
+}
+
+/* ============================================================
+   BLOCK 4 — Three.js scene
+============================================================ */
+const renderer = new THREE.WebGLRenderer({ canvas: elCanvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.setSize(elCanvas.clientWidth, elCanvas.clientHeight, false);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1020);
+
+const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 500);
+camera.position.set(2.2, 1.7, 2.2); // eye height
+
+const lightA = new THREE.AmbientLight(0xffffff, 0.55);
+scene.add(lightA);
+const lightD = new THREE.DirectionalLight(0xffffff, 0.8);
+lightD.position.set(8, 12, 6);
+scene.add(lightD);
+
+const grid = new THREE.GridHelper(40, 400, 0x24305a, 0x1a2448);
+grid.position.y = 0;
+scene.add(grid);
+
+// Plan overlay plane
+const planMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, metalness: 0, roughness: 1 });
+const planGeo = new THREE.PlaneGeometry(10, 10);
+const planMesh = new THREE.Mesh(planGeo, planMat);
+planMesh.rotation.x = -Math.PI / 2;
+planMesh.position.set(0, 0.001, 0);
+scene.add(planMesh);
+
+// Walls group (lines + simple meshes)
+const wallsGroup = new THREE.Group();
+scene.add(wallsGroup);
+
+// Zones group (rect outlines)
+const zonesGroup = new THREE.Group();
+scene.add(zonesGroup);
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+/* ============================================================
+   BLOCK 5 — FPS controls (pointer lock + WASD)
+============================================================ */
+let pointerLocked = false;
+const keys = new Set();
+let yaw = 0, pitch = 0;
+const move = { f:0, s:0, r:0, l:0 };
+const speed = { base: 2.2, fast: 5.0 };
+
+function onPointerLockChange() {
+  pointerLocked = (document.pointerLockElement === elCanvas);
+}
+document.addEventListener("pointerlockchange", onPointerLockChange);
+
+function requestLock() { elCanvas.requestPointerLock?.(); }
+function exitLock() { document.exitPointerLock?.(); }
+
+elBtnLockMouse.addEventListener("click", () => requestLock());
+elBtnUnlockMouse.addEventListener("click", () => exitLock());
+elCanvas.addEventListener("click", () => { if (!pointerLocked) requestLock(); });
+
+window.addEventListener("keydown", (e) => {
+  keys.add(e.code);
+  if (e.code === "Escape") exitLock();
+});
+window.addEventListener("keyup", (e) => keys.delete(e.code));
+
+window.addEventListener("mousemove", (e) => {
+  if (!pointerLocked) return;
+  const sens = 0.0022;
+  yaw -= e.movementX * sens;
+  pitch -= e.movementY * sens;
+  pitch = clamp(pitch, -1.2, 1.2);
+});
+
+function updateFPS(dt) {
+  camera.rotation.set(pitch, yaw, 0, "YXZ");
+
+  const forward = new THREE.Vector3(0,0,-1).applyEuler(camera.rotation);
+  const right = new THREE.Vector3(1,0,0).applyEuler(camera.rotation);
+
+  forward.y = 0; forward.normalize();
+  right.y = 0; right.normalize();
+
+  const isFast = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  const v = (isFast ? speed.fast : speed.base) * dt;
+
+  let dir = new THREE.Vector3(0,0,0);
+  if (keys.has("KeyW")) dir.add(forward);
+  if (keys.has("KeyS")) dir.add(forward.clone().multiplyScalar(-1));
+  if (keys.has("KeyD")) dir.add(right);
+  if (keys.has("KeyA")) dir.add(right.clone().multiplyScalar(-1));
+
+  if (dir.lengthSq() > 0) {
+    dir.normalize().multiplyScalar(v);
+    camera.position.add(dir);
+  }
+}
+
+/* ============================================================
+   BLOCK 6 — Plan overlay setup
+============================================================ */
+async function loadPlanTexture(imageUrl) {
+  return new Promise((resolve, reject) => {
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      imageUrl,
+      (tex) => resolve(tex),
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+function applyPlanOverlay() {
+  // resize plane by computed overlay meters
+  planMesh.geometry.dispose();
+  planMesh.geometry = new THREE.PlaneGeometry(computed.overlayWm, computed.overlayHm);
+
+  // position origin at (0,0) lower-left-ish by default -> center at (w/2, h/2)
+  // We keep origin at plan.planOverlay.origin; otherwise center at half extents.
+  const ox = plan?.planOverlay?.origin?.x ?? 0;
+  const oz = plan?.planOverlay?.origin?.z ?? 0;
+  planMesh.position.set(ox + computed.overlayWm/2, 0.001, oz + computed.overlayHm/2);
+
+  const rotY = (plan?.planOverlay?.rotationYDeg ?? 0) * Math.PI/180;
+  planMesh.rotation.set(-Math.PI/2, rotY, 0);
+
+  planMat.opacity = clamp(Number(elOpacity.value), 0.15, 1.0);
+  if (planTexture) {
+    planTexture.colorSpace = THREE.SRGBColorSpace;
+    planTexture.wrapS = THREE.ClampToEdgeWrapping;
+    planTexture.wrapT = THREE.ClampToEdgeWrapping;
+    planMat.map = planTexture;
+    planMat.needsUpdate = true;
+  }
+}
+
+elOpacity.addEventListener("input", () => {
+  planMat.opacity = clamp(Number(elOpacity.value), 0.15, 1.0);
+});
+
+/* ============================================================
+   BLOCK 7 — Picking on plan plane (world point + UV + pixel)
+============================================================ */
+function getPickOnPlan(clientX, clientY) {
+  const rect = elCanvas.getBoundingClientRect();
+  const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const y = -(((clientY - rect.top) / rect.height) * 2 - 1);
+  mouse.set(x, y);
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObject(planMesh, false);
+  if (!hits.length) return null;
+
+  const hit = hits[0];
+  const uv = hit.uv ? { u: hit.uv.x, v: hit.uv.y } : null;
+  if (!uv) return null;
+
+  // Pixel coordinates in original image space
+  const px = Math.round(uv.u * planImageSize.w);
+  const py = Math.round((1 - uv.v) * planImageSize.h); // flip v
+
+  return {
+    world: { x: hit.point.x, z: hit.point.z },
+    uv,
+    px: { x: px, y: py }
+  };
+}
+
+/* ============================================================
+   BLOCK 8 — Drawing: walls + rect zones + visuals
+============================================================ */
+function clearGroup(g) {
+  while (g.children.length) {
+    const c = g.children.pop();
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) {
+      if (Array.isArray(c.material)) c.material.forEach(m=>m.dispose());
+      else c.material.dispose();
     }
   }
-  </script>
+}
 
-  <!-- ============================================================
-       BLOCK: App-entrypoint
-       Laddar bootstrap.js som ESM-modul — detta startar hela appen.
-       ============================================================ -->
-  <script type="module" src="src/app/bootstrap.js"></script>
+function rebuildWalls() {
+  clearGroup(wallsGroup);
+  const segs = plan?.walls?.segments || [];
+  for (const s of segs) {
+    const a = new THREE.Vector3(s.a[0], 0.01, s.a[1]);
+    const b = new THREE.Vector3(s.b[0], 0.01, s.b[1]);
 
+    // line
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x2ad66d });
+    const line = new THREE.Line(lineGeo, lineMat);
+    wallsGroup.add(line);
+
+    // simple wall mesh (box)
+    const height = Number.isFinite(s.heightM) ? s.heightM : (s.heightZoneId === "HZ_PACK_RECEIVING" ? 5.0 : 3.2);
+    const thick = Number.isFinite(s.thicknessM) ? s.thicknessM : (plan?.walls?.defaultThicknessM ?? 0.1);
+
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.sqrt(dx*dx + dz*dz);
+    if (len < 0.01) continue;
+
+    const wallGeo = new THREE.BoxGeometry(len, height, thick);
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x24305a, transparent: true, opacity: 0.55, metalness: 0, roughness: 1 });
+    const wall = new THREE.Mesh(wallGeo, wallMat);
+
+    const mid = new THREE.Vector3((a.x+b.x)/2, height/2, (a.z+b.z)/2);
+    wall.position.copy(mid);
+
+    const angle = Math.atan2(dz, dx);
+    wall.rotation.y = -angle;
+
+    wallsGroup.add(wall);
+  }
+}
+
+function rebuildZones() {
+  clearGroup(zonesGroup);
+
+  // Height zones (areas)
+  const hz = plan?.heightZones || [];
+  for (const z of hz) {
+    const areas = z.areas || [];
+    for (const a of areas) {
+      if (!a?.rect) continue;
+      const { x, z:zz, w, d } = a.rect;
+      drawRectOutline(x, zz, w, d, z.id === "HZ_PACK_RECEIVING" ? 0xffb020 : 0x7aa2ff, 0.02);
+    }
+  }
+
+  // Hood zones
+  const hoods = plan?.hoodZones || [];
+  for (const h of hoods) {
+    const r = h?.rect;
+    if (!r) continue;
+    const color = (h.id === "HOOD_B") ? 0xff4d4d : 0xaab3d6;
+    drawRectOutline(r.x, r.z, r.w, r.d, color, 0.03);
+  }
+}
+
+function drawRectOutline(x, z, w, d, color=0xffffff, y=0.02) {
+  const pts = [
+    new THREE.Vector3(x, y, z),
+    new THREE.Vector3(x+w, y, z),
+    new THREE.Vector3(x+w, y, z+d),
+    new THREE.Vector3(x, y, z+d),
+    new THREE.Vector3(x, y, z)
+  ];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({ color });
+  const line = new THREE.Line(geo, mat);
+  zonesGroup.add(line);
+}
+
+/* ============================================================
+   BLOCK 9 — Editor actions
+============================================================ */
+function setMode(mode) {
+  editor.mode = mode;
+  editor.pending = null;
+  safeText(elModeTxt, mode);
+  safeText(elClickTxt, "—");
+  buildModePanel();
+}
+
+function failClosedMessage() {
+  return "Kalibrera skalan först med Kåpa B (6,0 m).";
+}
+
+function pushUndo(entry) {
+  editor.undoStack.push(entry);
+  // cap
+  if (editor.undoStack.length > 80) editor.undoStack.shift();
+}
+
+function doUndo() {
+  const u = editor.undoStack.pop();
+  if (!u) return;
+  if (u.type === "addWall") {
+    plan.walls.segments.pop();
+    rebuildWalls();
+  }
+  if (u.type === "addHeightRect") {
+    const z = (plan.heightZones || []).find(x => x.id === u.zoneId);
+    if (z?.areas?.length) z.areas.pop();
+    rebuildZones();
+  }
+  if (u.type === "setHoodRect") {
+    const h = (plan.hoodZones || []).find(x => x.id === u.hoodId);
+    if (h) h.rect = u.prevRect;
+    rebuildZones();
+  }
+  persistPlan();
+}
+
+function clearAll() {
+  if (!confirm("Rensa ALLA väggar och zoner? (Skala behålls)")) return;
+  plan.walls.segments = [];
+  for (const z of plan.heightZones || []) z.areas = [];
+  // hoods: keep sizes, clear placements (x/z)
+  for (const h of plan.hoodZones || []) {
+    h.rect.x = 0; h.rect.z = 0;
+  }
+  editor.undoStack = [];
+  rebuildWalls();
+  rebuildZones();
+  persistPlan();
+}
+
+function buildModePanel() {
+  elModePanel.innerHTML = "";
+
+  if (editor.mode === "drawWall") {
+    const label = document.createElement("label");
+    label.textContent = "Vägg-höjdzon";
+    const sel = document.createElement("select");
+    sel.id = "selWallHZ";
+    sel.innerHTML = `
+      <option value="HZ_KITCHEN_DISH">Storkök + Disk (3,20 m)</option>
+      <option value="HZ_PACK_RECEIVING">Pack + Varumottagning (5,0 m)</option>
+    `;
+    elModePanel.appendChild(label);
+    elModePanel.appendChild(sel);
+
+    const small = document.createElement("div");
+    small.className = "hint";
+    small.textContent = "Klick 1 = start, klick 2 = slut. Segment sparas i meter.";
+    elModePanel.appendChild(small);
+  }
+
+  if (editor.mode === "drawHeightRect") {
+    const label = document.createElement("label");
+    label.textContent = "Välj höjdzon";
+    const sel = document.createElement("select");
+    sel.id = "selHeightZone";
+    sel.innerHTML = `
+      <option value="HZ_KITCHEN_DISH">Storkök + Disk (3,20 m)</option>
+      <option value="HZ_PACK_RECEIVING">Pack + Varumottagning (5,0 m)</option>
+    `;
+    elModePanel.appendChild(label);
+    elModePanel.appendChild(sel);
+    const small = document.createElement("div");
+    small.className = "hint";
+    small.textContent = "Klick 1 = hörn A, klick 2 = hörn B (rektangel).";
+    elModePanel.appendChild(small);
+  }
+
+  if (editor.mode === "drawHoodRect") {
+    const label = document.createElement("label");
+    label.textContent = "Välj kåpa";
+    const sel = document.createElement("select");
+    sel.id = "selHood";
+    sel.innerHTML = `
+      <option value="HOOD_GROVDISK">Grovdisk</option>
+      <option value="HOOD_HUVDISK">Huvuddiskmaskin</option>
+      <option value="HOOD_KOKERI_2400">Kokeri (2400)</option>
+      <option value="HOOD_B">Kåpa B (6x3)</option>
+    `;
+    elModePanel.appendChild(label);
+    elModePanel.appendChild(sel);
+
+    const small = document.createElement("div");
+    small.className = "hint";
+    small.textContent = "Klick 1 = hörn A, klick 2 = hörn B. För HOOD_B/2400 låses w/d delvis.";
+    elModePanel.appendChild(small);
+  }
+}
+
+/* ============================================================
+   BLOCK 10 — Calibration logic (6m + 3m control)
+============================================================ */
+function resetCalibration() {
+  plan.planOverlay.metersPerPixel = null;
+  plan.planOverlay.calibration.status = "uncalibrated";
+  plan.planOverlay.calibration.points.p1_px = null;
+  plan.planOverlay.calibration.points.p2_px = null;
+  plan.planOverlay.calibration.points.secondary_p1_px = null;
+  plan.planOverlay.calibration.points.secondary_p2_px = null;
+  plan.planOverlay.calibration.result.pixelDistance = null;
+  plan.planOverlay.calibration.result.pixelDistanceSecondary = null;
+  plan.planOverlay.calibration.result.secondaryErrorPct = null;
+  plan.planOverlay.calibration.result.computedMetersPerPixel = null;
+
+  syncComputedFromPlan();
+  applyPlanOverlay();
+  persistPlan();
+
+  setCalStatus(["Skala nollställd.", "Kalibrera med Kåpa B (6,0 m)."]);
+}
+
+function beginCalibration(kind) {
+  // kind: "cal6" or "cal3"
+  editor.mode = kind;
+  editor.pending = { kind, p1: null, p2: null };
+  safeText(elModeTxt, kind);
+  safeText(elClickTxt, "Väntar på klick 1…");
+  setCalStatus([
+    kind === "cal6" ? "Kalibrera (6,0 m): Klicka två punkter på långsidan av Kåpa B." :
+                      "Kontroll (3,0 m): Klicka två punkter på kortsidan av Kåpa B."
+  ]);
+}
+
+function finishCalibration(kind, p1px, p2px) {
+  const dx = p2px.x - p1px.x;
+  const dy = p2px.y - p1px.y;
+  const distPx = Math.sqrt(dx*dx + dy*dy);
+  if (!Number.isFinite(distPx) || distPx < 5) {
+    setCalStatus(["Fel: För kort avstånd. Försök igen."]);
+    return;
+  }
+
+  if (kind === "cal6") {
+    const mpp = 6.0 / distPx;
+    plan.planOverlay.metersPerPixel = mpp;
+    plan.planOverlay.calibration.status = "calibrated";
+    plan.planOverlay.calibration.points.p1_px = p1px;
+    plan.planOverlay.calibration.points.p2_px = p2px;
+    plan.planOverlay.calibration.result.pixelDistance = distPx;
+    plan.planOverlay.calibration.result.computedMetersPerPixel = mpp;
+
+    syncComputedFromPlan();
+    applyPlanOverlay();
+    persistPlan();
+
+    setCalStatus([
+      `Skala OK: ${fmt(mpp, 6)} m/px`,
+      `6,0 m motsvarar ${Math.round(distPx)} px`
+    ]);
+    safeText(elClickTxt, "Kalibrering klar.");
+    setMode("none");
+  }
+
+  if (kind === "cal3") {
+    if (!isCalibrated()) {
+      setCalStatus(["Kontroll kräver att 6,0 m-kalibrering är gjord först."]);
+      return;
+    }
+    plan.planOverlay.calibration.points.secondary_p1_px = p1px;
+    plan.planOverlay.calibration.points.secondary_p2_px = p2px;
+    plan.planOverlay.calibration.result.pixelDistanceSecondary = distPx;
+
+    const expectedPx = 3.0 / plan.planOverlay.metersPerPixel;
+    const errPct = ((distPx - expectedPx) / expectedPx) * 100;
+    plan.planOverlay.calibration.result.secondaryErrorPct = errPct;
+
+    persistPlan();
+
+    setCalStatus([
+      `Kontroll 3,0 m: mätt ${Math.round(distPx)} px`,
+      `Förväntat (enligt skala): ${Math.round(expectedPx)} px`,
+      `Avvikelse: ${fmt(errPct, 1)} %`
+    ]);
+    safeText(elClickTxt, "Kontroll klar.");
+    setMode("none");
+  }
+}
+
+/* ============================================================
+   BLOCK 11 — Click handling for modes
+============================================================ */
+function requireCalibratedOrWarn() {
+  if (isCalibrated()) return true;
+  setCalStatus([failClosedMessage()]);
+  return false;
+}
+
+function onPlanClick(ev) {
+  const pick = getPickOnPlan(ev.clientX, ev.clientY);
+  if (!pick) return;
+
+  // Calibration modes
+  if (editor.mode === "cal6" || editor.mode === "cal3") {
+    const kind = editor.mode;
+    if (!editor.pending || editor.pending.kind !== kind) {
+      editor.pending = { kind, p1: null, p2: null };
+    }
+    if (!editor.pending.p1) {
+      editor.pending.p1 = pick.px;
+      safeText(elClickTxt, "Klick 1 OK. Väntar på klick 2…");
+      return;
+    }
+    editor.pending.p2 = pick.px;
+    finishCalibration(kind, editor.pending.p1, editor.pending.p2);
+    editor.pending = null;
+    return;
+  }
+
+  // Editing modes require calibration
+  if (editor.mode === "drawWall" || editor.mode === "drawHeightRect" || editor.mode === "drawHoodRect") {
+    if (!requireCalibratedOrWarn()) return;
+  }
+
+  if (editor.mode === "drawWall") {
+    const hz = $("#selWallHZ")?.value || "HZ_KITCHEN_DISH";
+
+    if (!editor.pending) {
+      editor.pending = { kind: "wall", p1w: pick.world, hz };
+      safeText(elClickTxt, "Vägg: Klick 1 OK. Klick 2 för slutpunkt…");
+      return;
+    }
+    const p1 = editor.pending.p1w;
+    const p2 = pick.world;
+    const seg = {
+      a: [Number(p1.x), Number(p1.z)],
+      b: [Number(p2.x), Number(p2.z)],
+      heightZoneId: hz,
+      heightM: (hz === "HZ_PACK_RECEIVING" ? 5.0 : 3.2),
+      thicknessM: plan?.walls?.defaultThicknessM ?? 0.1
+    };
+    plan.walls.segments.push(seg);
+    pushUndo({ type: "addWall" });
+    editor.pending = null;
+
+    rebuildWalls();
+    persistPlan();
+    safeText(elClickTxt, "Väggsegment skapad.");
+    return;
+  }
+
+  if (editor.mode === "drawHeightRect") {
+    const zoneId = $("#selHeightZone")?.value || "HZ_KITCHEN_DISH";
+    if (!editor.pending) {
+      editor.pending = { kind: "hrect", p1w: pick.world, zoneId };
+      safeText(elClickTxt, "Höjdzon: Klick 1 OK. Klick 2 för rektangel…");
+      return;
+    }
+    const a = editor.pending.p1w;
+    const b = pick.world;
+    const x = Math.min(a.x, b.x);
+    const z = Math.min(a.z, b.z);
+    const w = Math.abs(a.x - b.x);
+    const d = Math.abs(a.z - b.z);
+    const hz = (plan.heightZones || []).find(x => x.id === editor.pending.zoneId);
+    if (hz) {
+      hz.areas = hz.areas || [];
+      hz.areas.push({ rect: { x, z, w, d } });
+      pushUndo({ type: "addHeightRect", zoneId: hz.id });
+      rebuildZones();
+      persistPlan();
+      safeText(elClickTxt, "Höjdzon-rect skapad.");
+    }
+    editor.pending = null;
+    return;
+  }
+
+  if (editor.mode === "drawHoodRect") {
+    const hoodId = $("#selHood")?.value || "HOOD_B";
+    if (!editor.pending) {
+      editor.pending = { kind: "hoodrect", p1w: pick.world, hoodId };
+      safeText(elClickTxt, "Kåpa: Klick 1 OK. Klick 2 för rektangel…");
+      return;
+    }
+    const a = editor.pending.p1w;
+    const b = pick.world;
+    let x = Math.min(a.x, b.x);
+    let z = Math.min(a.z, b.z);
+    let w = Math.abs(a.x - b.x);
+    let d = Math.abs(a.z - b.z);
+
+    const hood = (plan.hoodZones || []).find(h => h.id === hoodId);
+    if (hood) {
+      const prevRect = { ...hood.rect };
+
+      // lock sizes for known hoods
+      if (hoodId === "HOOD_B") { w = 6.0; d = 3.0; }
+      if (hoodId === "HOOD_KOKERI_2400") { w = 2.4; /* d from user draw */ }
+
+      hood.rect = { x, z, w, d };
+      pushUndo({ type: "setHoodRect", hoodId, prevRect });
+      rebuildZones();
+      persistPlan();
+      safeText(elClickTxt, "Kåp-rect sparad.");
+    }
+    editor.pending = null;
+    return;
+  }
+}
+
+// Attach click handler (only when not pointer-locked OR allow anyway)
+// We allow clicks always; pointer lock click still works.
+elCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
+elCanvas.addEventListener("mousedown", (e) => {
+  // Left button only
+  if (e.button !== 0) return;
+  onPlanClick(e);
+});
+
+/* ============================================================
+   BLOCK 12 — Export/Import
+============================================================ */
+let lastDownloadUrl = null;
+
+function exportPlanToTextarea() {
+  const txt = JSON.stringify(plan, null, 2);
+  elTxtJson.value = txt;
+
+  if (lastDownloadUrl) URL.revokeObjectURL(lastDownloadUrl);
+  lastDownloadUrl = downloadHrefFromText(txt);
+  elBtnDownload.href = lastDownloadUrl;
+}
+
+function importPlanFromTextarea() {
+  const raw = elTxtJson.value || "";
+  let obj = null;
+  try {
+    obj = JSON.parse(raw);
+  } catch (_) {
+    setCalStatus(["Import FAIL: JSON kunde inte parsas."]);
+    return;
+  }
+
+  // minimal sanity
+  if (!obj?.planOverlay?.image) {
+    setCalStatus(["Import FAIL: planOverlay.image saknas."]);
+    return;
+  }
+
+  plan = obj;
+  persistPlan();
+
+  syncComputedFromPlan();
+  applyPlanOverlay();
+  rebuildWalls();
+  rebuildZones();
+
+  setCalStatus(["Import OK."]);
+}
+
+elBtnExport.addEventListener("click", () => {
+  if (!isCalibrated()) {
+    setCalStatus([failClosedMessage()]);
+    return;
+  }
+  exportPlanToTextarea();
+  setCalStatus(["Export OK: JSON är uppdaterad i rutan.", "Spara filen som /data/plan.json i GitHub."]);
+});
+
+elBtnImport.addEventListener("click", () => importPlanFromTextarea());
+elBtnCopy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(elTxtJson.value || "");
+    setCalStatus(["Kopierat till urklipp."]);
+  } catch (_) {
+    setCalStatus(["Kunde inte kopiera (browser-policy). Markera och kopiera manuellt."]);
+  }
+});
+
+/* ============================================================
+   BLOCK 13 — UI events
+============================================================ */
+elSelMode.addEventListener("change", () => setMode(elSelMode.value));
+
+elBtnCal6.addEventListener("click", () => beginCalibration("cal6"));
+elBtnCal3.addEventListener("click", () => beginCalibration("cal3"));
+elBtnClearCal.addEventListener("click", () => resetCalibration());
+
+elBtnUndo.addEventListener("click", () => doUndo());
+elBtnClearAll.addEventListener("click", () => clearAll());
+
+/* ============================================================
+   BLOCK 14 — Resize + render loop
+============================================================ */
+function onResize() {
+  const rect = elCanvas.getBoundingClientRect();
+  renderer.setSize(rect.width, rect.height, false);
+  camera.aspect = rect.width / rect.height;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", onResize);
+
+let lastT = performance.now();
+function tick(t) {
+  const dt = Math.min(0.05, (t - lastT) / 1000);
+  lastT = t;
+
+  updateFPS(dt);
+
+  // Debug
+  safeText(elDbgPos, `${fmt(camera.position.x,2)}, ${fmt(camera.position.z,2)} m`);
+  safeText(elDbgWalls, String(plan?.walls?.segments?.length || 0));
+  safeText(elDbgHoods, String((plan?.hoodZones || []).filter(h => (h.rect?.w||0) > 0 && (h.rect?.d||0) > 0).length));
+  const hzCount = (plan?.heightZones || []).reduce((n,z)=>n + (z.areas?.length||0), 0);
+  safeText(elDbgHeights, String(hzCount));
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ============================================================
+   BLOCK 15 — Boot
+============================================================ */
+function setInitialStatus() {
+  setCalStatus([
+    "Ladda planritning…",
+    "Kalibrera skalan med Kåpa B (6,0 m) innan du ritar väggar/zoner."
+  ]);
+  safeText(elModeTxt, "none");
+  safeText(elClickTxt, "—");
+  buildModePanel();
+}
+
+async function boot() {
+  setInitialStatus();
+  plan = await loadPlan();
+
+  // Load texture
+  const imgUrl = plan?.planOverlay?.image || "assets/plans/plan.png";
+  planTexture = await loadPlanTexture(imgUrl);
+
+  // Extract image size
+  const img = planTexture.image;
+  planImageSize = { w: img?.width || 1, h: img?.height || 1 };
+
+  syncComputedFromPlan();
+  applyPlanOverlay();
+  rebuildWalls();
+  rebuildZones();
+
+  // UI sync
+  elOpacity.value = String(plan?.planOverlay?.opacity ?? 0.7);
+  planMat.opacity = clamp(Number(elOpacity.value), 0.15, 1.0);
+
+  if (isCalibrated()) {
+    setCalStatus([
+      `Skala laddad: ${fmt(plan.planOverlay.metersPerPixel, 6)} m/px`,
+      "Du kan rita väggar/zoner och exportera plan.json."
+    ]);
+  } else {
+    setCalStatus([
+      "Skala ej kalibrerad.",
+      "Tryck: Kalibrera (6,0 m) och klicka två punkter på kåpa B långsida."
+    ]);
+  }
+
+  onResize();
+  requestAnimationFrame(tick);
+}
+
+boot().catch((e) => {
+  setCalStatus([`Startfel: ${String(e?.message || e)}`]);
+});
+</script>
 </body>
 </html>
