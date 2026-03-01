@@ -1,1 +1,108 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kitchen Planner 3D</title>
 
+  <!-- ============================================================
+       BLOCK: Stilmall
+       Laddar huvudstilen för hela appen.
+       ============================================================ -->
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+
+  <!-- ============================================================
+       BLOCK: 3D-canvas-container
+       Här renderas Three.js-scenen. Alla 3D-element ritas i denna div.
+       ============================================================ -->
+  <div id="scene-container"></div>
+
+  <!-- ============================================================
+       BLOCK: Debug-overlay
+       Visar kameraposition (x, z) i meter och aktuell skala (m/px).
+       Uppdateras varje frame av bootstrap.js.
+       ============================================================ -->
+  <div id="debug-overlay">
+    <span id="debug-pos">Pos: 0.00, 0.00</span> |
+    <span id="debug-scale">Skala: ej kalibrerad</span>
+  </div>
+
+  <!-- ============================================================
+       BLOCK: UI-panel (höger)
+       Innehåller kontroller:
+         - Opacity-slider för planritning
+         - Kalibreringsknapp + status
+         - Höjdzoner (info från plan.json)
+       ============================================================ -->
+  <div id="ui-panel">
+    <h2>Köksplanerare 3D</h2>
+
+    <!-- SUB-BLOCK: Plan-opacity -->
+    <div class="ui-group">
+      <label for="opacity-slider">Plan-opacity:</label>
+      <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="0.7" />
+      <span id="opacity-value">0.70</span>
+    </div>
+
+    <!-- SUB-BLOCK: Kalibrera skala -->
+    <div class="ui-group">
+      <button id="btn-calibrate">📐 Kalibrera skala (Kåpa B = 6 m)</button>
+      <p id="calibration-status">Status: ej kalibrerad</p>
+      <p id="calibration-info" class="info-text">
+        Klicka på knappen, sedan 2 punkter på planbilden (långsidan kåpa B).
+      </p>
+    </div>
+
+    <!-- SUB-BLOCK: Höjdzoner -->
+    <div class="ui-group">
+      <h3>Höjdzoner</h3>
+      <ul id="zone-list">
+        <!-- Fylls dynamiskt av bootstrap.js -->
+      </ul>
+    </div>
+
+    <!-- SUB-BLOCK: Instruktioner -->
+    <div class="ui-group">
+      <h3>Kontroller</h3>
+      <ul class="help-list">
+        <li><kbd>Klick</kbd> i scenen → lås mus (FPS)</li>
+        <li><kbd>W A S D</kbd> — gå</li>
+        <li><kbd>Shift</kbd> — snabb</li>
+        <li><kbd>Esc</kbd> — släpp mus</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       BLOCK: Kalibrerings-overlay
+       Visar instruktioner under pågående kalibrering.
+       Döljs normalt, visas när kalibrering är aktiv.
+       ============================================================ -->
+  <div id="calibration-overlay" class="hidden">
+    <p id="calibration-prompt">Klicka punkt 1 på planbilden...</p>
+  </div>
+
+  <!-- ============================================================
+       BLOCK: Three.js CDN
+       Laddar Three.js + PointerLockControls via CDN (ESM-import-map).
+       Inga build-steg behövs — allt körs direkt i webbläsaren.
+       ============================================================ -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <!-- ============================================================
+       BLOCK: App-entrypoint
+       Laddar bootstrap.js som ESM-modul — detta startar hela appen.
+       ============================================================ -->
+  <script type="module" src="src/app/bootstrap.js"></script>
+
+</body>
+</html>
