@@ -1,1 +1,29 @@
+{
+  "_comment": "Plan-metadata: skala, rotation, offset och höjdzoner. Kalibrering uppdaterar metersPerPixel.",
 
+  "planImage": "assets/plans/plan.png",
+
+  "calibration": {
+    "metersPerPixel": null,
+    "referenceObject": "Kåpa B långsida",
+    "referenceLengthM": 6.0,
+    "point1": null,
+    "point2": null
+  },
+
+  "offset": { "x": 0, "z": 0 },
+  "rotationDeg": 0,
+
+  "heightZones": [
+    {
+      "id": "storkok-disk",
+      "name": "Storkök / Disk",
+      "ceilingHeightM": 3.20
+    },
+    {
+      "id": "pack-varumottagning",
+      "name": "Pack / Varumottagning",
+      "ceilingHeightM": 5.00
+    }
+  ]
+}
